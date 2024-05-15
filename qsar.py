@@ -161,13 +161,17 @@ def main() -> None:
     header: pd.DataFrame = create_header(all_vars['maxvar'])
     for numvar in range(all_vars['maxvar']):
         if numvar+1 == 1:
-            results: pd.DataFrame = pd.concat([header, pd.concat([build_model(x_train[des], y_train, x_test[des], y_test, [des], num_vars=numvar+1) for des in x_train.columns], ignore_index=True)], ignore_index=True)
+            models: list[pd.DataFrame] = pd.concat([build_model(x_train[des], y_train, x_test[des], y_test, [des], num_vars=numvar+1) for des in x_train.columns], ignore_index=True)
+            results: pd.DataFrame      = pd.concat([header, models], ignore_index=True)
             if not all_vars['wo_outlier']:
-                results: pd.DataFrame = pd.concat([results, pd.concat([build_model_wo_outlier(x_train[des], y_train, x_test[des], y_test, [des], num_vars=numvar+1) for des in x_train.columns], ignore_index=True)], ignore_index=True)
+                models: list[pd.DataFrame] = pd.concat([build_model_wo_outlier(x_train[des], y_train, x_test[des], y_test, [des], num_vars=numvar+1) for des in x_train.columns], ignore_index=True)
+                results: pd.DataFrame      = pd.concat([results, models], ignore_index=True)
         else:
-            results: pd.DataFrame = pd.concat([results, pd.concat([build_model(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=numvar+1) for des in combinations(x_train.columns, numvar+1) if check_self_corelation(des, self_corelation, all_vars['pairscore'])], ignore_index=True)], ignore_index=True)
+            models: list[pd.DataFrame] = pd.concat([build_model(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=numvar+1) for des in combinations(x_train.columns, numvar+1) if check_self_corelation(des, self_corelation, all_vars['pairscore'])], ignore_index=True)
+            results: pd.DataFrame      = pd.concat([results, models], ignore_index=True)
             if not all_vars['wo_outlier']:
-                results: pd.DataFrame = pd.concat([results, pd.concat([build_model_wo_outlier(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=numvar+1) for des in combinations(x_train.columns, numvar+1) if check_self_corelation(des, self_corelation, all_vars['pairscore'])], ignore_index=True)], ignore_index=True)
+                models: list[pd.DataFrame] = pd.concat([build_model_wo_outlier(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=numvar+1) for des in combinations(x_train.columns, numvar+1) if check_self_corelation(des, self_corelation, all_vars['pairscore'])], ignore_index=True)
+                results: pd.DataFrame      = pd.concat([results, models], ignore_index=True)
     results: pd.DataFrame = results.iloc[range(all_vars['maxmodel'])]
     results.to_csv(all_vars['output'])
 
