@@ -23,7 +23,7 @@ def setup_argparser() -> ArgumentParser:
     parser.add_argument("--interval", type=int, default=3, help="Interval of data for train-test splitting data (Default = 3)")
     parser.add_argument("--r2_filter", type=float, default=0.3, help="R^2 score for filtering out of uncorrelated descriptors (Default = 0.3)")
     parser.add_argument("--pair_filter", type=float, default=0.7, help="R^2 score for filtering out of correlated descriptors (Default = 0.7)")
-    parser.add_argument("--wo_outlier", type=bool, default=False, help="Building QSAR without outlier data. (Default = False)")
+    parser.add_argument("--build_wo_outlier", type=bool, default=False, help="Building QSAR without outlier data. (Default = False)")
     parser.add_help = True
     return parser
 
@@ -63,7 +63,7 @@ def create_header(max_var: int) -> pd.DataFrame:
     coef_name_df: pd.DataFrame  = pd.DataFrame({f"Feature_{i+1}":[] for i in range(max_var)})
     coef_value_df: pd.DataFrame = pd.DataFrame({f"Coefficient_{i+1}":[] for i in range(max_var)})
     intercept_df: pd.DataFrame  = pd.DataFrame({"Intercept":[]})
-    scores_df: pd.DataFrame     = pd.DataFrame({"R2_training":[], "R2_Test":[], "Q2_Score":[]})
+    scores_df: pd.DataFrame     = pd.DataFrame({"R2_Training":[], "R2_Test":[], "Q2_Score":[]})
     outlier_df: pd.DataFrame    = pd.DataFrame({"Outlier":[]})
     result_df: pd.DataFrame     = pd.concat([coef_name_df, coef_value_df, intercept_df, scores_df, outlier_df], axis=1)
     return result_df
@@ -85,7 +85,7 @@ def build_model(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test: pd.DataFra
     coef_name_df: pd.DataFrame      = pd.DataFrame({f"Feature_{i+1}":[des] for i, des in enumerate(des_names)})
     coef_value_df: pd.DataFrame     = pd.DataFrame({f"Coefficient_{i+1}":[val] for i, val in enumerate(lr_model.coef_[0])})
     intercept_df: pd.DataFrame      = pd.DataFrame({"Intercept":lr_model.intercept_})
-    scores_df: pd.DataFrame         = pd.DataFrame({"R2_training":[r2_train], "R2_Test":[r2_test], "Q2_Score":[q2_scores]})
+    scores_df: pd.DataFrame         = pd.DataFrame({"R2_Training":[r2_train], "R2_Test":[r2_test], "Q2_Score":[q2_scores]})
     outlier_df: pd.DataFrame        = pd.DataFrame({"Outlier":[]})
     result_df: pd.DataFrame         = pd.concat([coef_name_df, coef_value_df, intercept_df, scores_df, outlier_df], axis=1)
     return result_df
@@ -115,7 +115,7 @@ def build_model_wo_outlier(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test:
             coef_name_df: pd.DataFrame     = pd.DataFrame({f"Feature_{i+1}":[des] for i, des in enumerate(des_names)})
             coef_value_df: pd.DataFrame    = pd.DataFrame({f"Coefficient_{i+1}":[val] for i, val in enumerate(new_lr_model.coef_[0])})
             intercept_df: pd.DataFrame     = pd.DataFrame({"Intercept":new_lr_model.intercept_})
-            scores_df: pd.DataFrame        = pd.DataFrame({"R2_training":[r2_new], "R2_Test":[r2_test], "Q2_Score":[q2_score]})
+            scores_df: pd.DataFrame        = pd.DataFrame({"R2_Training":[r2_new], "R2_Test":[r2_test], "Q2_Score":[q2_score]})
             outlier_df: pd.DataFrame       = pd.DataFrame({"Outlier":[outliers]})
             result_df: pd.DataFrame        = pd.concat([coef_name_df, coef_value_df, intercept_df, scores_df, outlier_df], axis=1)
             models: pd.DataFrame           = pd.concat([models, result_df])
@@ -139,7 +139,7 @@ def build_model_wo_outlier(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test:
             coef_name_df: pd.DataFrame     = pd.DataFrame({f"Feature_{i+1}":[des] for i, des in enumerate(des_names)})
             coef_value_df: pd.DataFrame    = pd.DataFrame({f"Coefficient_{i+1}":[val] for i, val in enumerate(new_lr_model.coef_[0])})
             intercept_df: pd.DataFrame     = pd.DataFrame({"Intercept":new_lr_model.intercept_})
-            scores_df: pd.DataFrame        = pd.DataFrame({"R2_training":[r2_new], "R2_Test":[r2_test], "Q2_Score":[q2_score]})
+            scores_df: pd.DataFrame        = pd.DataFrame({"R2_Training":[r2_new], "R2_Test":[r2_test], "Q2_Score":[q2_score]})
             outlier_df: pd.DataFrame       = pd.DataFrame({"Outlier": [outliers]})
             result_df: pd.DataFrame        = pd.concat([coef_name_df, coef_value_df, intercept_df, scores_df, outlier_df], axis=1)
             models: pd.DataFrame           = pd.concat([models, result_df])
@@ -155,23 +155,28 @@ def main() -> None:
     df.index         = [f'mol_{i+1}' for i in range(len(df))]
     x: pd.DataFrame  = calculate_descriptor([Chem.MolFromSmiles(smiles) for smiles in df[df.columns[0]]], use3D=all_vars['3D'])
     y: pd.DataFrame  = df[df.columns[-1]]
-    new_x, new_y     = clean_onevar(x, y, all_vars['r2score'])
+    new_x, new_y     = clean_onevar(x, y, all_vars['r2_filter'])
     self_corelation  = {com:LinearRegression().fit(new_x[com[0]].values.reshape(-1, 1), new_x[com[1]].values.reshape(-1, 1)).score(new_x[com[0]].values.reshape(-1, 1), new_x[com[1]].values.reshape(-1, 1)) for com in combinations(new_x.columns, 2)}
     x_train, y_train, x_test, y_test = train_test_split(new_x, new_y, all_vars['interval'])
     header: pd.DataFrame = create_header(all_vars['maxvar'])
     for numvar in range(all_vars['maxvar']):
         if numvar+1 == 1:
-            models: list[pd.DataFrame] = pd.concat([Parallel(n_jobs=-1)(delayed(build_model)(x_train[des], y_train, x_test[des], y_test, [des], num_vars=numvar+1) for des in x_train.columns)], ignore_index=True)
-            results: pd.DataFrame      = pd.concat([header, models], ignore_index=True)
-            if not all_vars['wo_outlier']:
-                models: list[pd.DataFrame] = pd.concat([Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[des], y_train, x_test[des], y_test, [des], num_vars=numvar+1) for des in x_train.columns)], ignore_index=True)
-                results: pd.DataFrame      = pd.concat([results, models], ignore_index=True)
+            pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model)(x_train[des], y_train, x_test[des], y_test, [des], num_vars=numvar+1) for des in x_train.columns)
+            models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
+            results: pd.DataFrame       = pd.concat([header, models], ignore_index=True)
+            if not all_vars['build_wo_outlier']:
+                pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[des], y_train, x_test[des], y_test, [des], num_vars=numvar+1) for des in x_train.columns)
+                models: list[pd.DataFrame]  = pd.concat(pd_list, ignore_index=True)
+                results: pd.DataFrame       = pd.concat([results, models], ignore_index=True)
         else:
-            models: list[pd.DataFrame] = pd.concat([Parallel(n_jobs=-1)(delayed(build_model)(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=numvar+1) for des in combinations(x_train.columns, numvar+1) if check_self_corelation(des, self_corelation, all_vars['pairscore']))], ignore_index=True)
-            results: pd.DataFrame      = pd.concat([results, models], ignore_index=True)
-            if not all_vars['wo_outlier']:
-                models: list[pd.DataFrame] = pd.concat([Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=numvar+1) for des in combinations(x_train.columns, numvar+1) if check_self_corelation(des, self_corelation, all_vars['pairscore']))], ignore_index=True)
-                results: pd.DataFrame      = pd.concat([results, models], ignore_index=True)
+            pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model)(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=numvar+1) for des in combinations(x_train.columns, numvar+1) if check_self_corelation(des, self_corelation, all_vars['pair_filter']))
+            models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
+            results: pd.DataFrame       = pd.concat([results, models], ignore_index=True)
+            if not all_vars['build_wo_outlier']:
+                pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=numvar+1) for des in combinations(x_train.columns, numvar+1) if check_self_corelation(des, self_corelation, all_vars['pair_filter']))
+                models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
+                results: pd.DataFrame       = pd.concat([results, models], ignore_index=True)
+    results.sort_values(by=['R2_Training'], ascending=False)
     results: pd.DataFrame = results.iloc[range(all_vars['maxmodel'])]
     results.to_csv(all_vars['output'])
 
