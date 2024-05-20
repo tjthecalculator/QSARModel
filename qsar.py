@@ -95,7 +95,7 @@ def build_model_wo_outlier(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test:
     outliers: list[str]       = []
     new_x: pd.DataFrame       = deepcopy(x_train)
     new_y: pd.DataFrame       = deepcopy(y_train)
-    models: pd.DataFrame      = create_header(num_vars)
+    models                    = []
     while True:
         if num_vars == 1:
             lr_model: LinearRegression     = LinearRegression()
@@ -112,13 +112,10 @@ def build_model_wo_outlier(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test:
             new_lr_model.fit(new_x.values.reshape(-1, 1), new_y.values.reshape(-1, 1))
             r2_new: float                  = new_lr_model.score(new_x.values.reshape(-1, 1), new_y.values.reshape(-1, 1))
             r2_test: float                 = r2_score(y_test.values.reshape(-1, 1), new_lr_model.predict(x_test.values.reshape(-1, 1)))
-            coef_name_df: pd.DataFrame     = pd.DataFrame({f"Feature_{i+1}":[des] for i, des in enumerate(des_names)})
-            coef_value_df: pd.DataFrame    = pd.DataFrame({f"Coefficient_{i+1}":[val] for i, val in enumerate(new_lr_model.coef_[0])})
-            intercept_df: pd.DataFrame     = pd.DataFrame({"Intercept":new_lr_model.intercept_})
-            scores_df: pd.DataFrame        = pd.DataFrame({"R2_Training":[r2_new], "R2_Test":[r2_test], "Q2_Score":[q2_score]})
-            outlier_df: pd.DataFrame       = pd.DataFrame({"Outlier":[outliers]})
-            result_df: pd.DataFrame        = pd.concat([coef_name_df, coef_value_df, intercept_df, scores_df, outlier_df], axis=1)
-            models: pd.DataFrame           = pd.concat([models, result_df])
+            coef_value: list[float]        = new_lr_model.coef_[0]
+            intercept: list[float]         = new_lr_model.intercept_
+            scores_list: list[float]       = [r2_new, r2_test, q2_score]
+            models.append([scores_list, des_names, coef_value, intercept, outliers])
             if r2_new < old_r2*1.1:
                 break
         else:
@@ -136,16 +133,14 @@ def build_model_wo_outlier(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test:
             new_lr_model.fit(new_x.values, new_y.values.reshape(-1, 1))
             r2_new: float                  = new_lr_model.score(new_x.values, new_y.values.reshape(-1, 1))
             r2_test: float                 = r2_score(y_test.values.reshape(-1, 1), new_lr_model.predict(x_test.values))
-            coef_name_df: pd.DataFrame     = pd.DataFrame({f"Feature_{i+1}":[des] for i, des in enumerate(des_names)})
-            coef_value_df: pd.DataFrame    = pd.DataFrame({f"Coefficient_{i+1}":[val] for i, val in enumerate(new_lr_model.coef_[0])})
-            intercept_df: pd.DataFrame     = pd.DataFrame({"Intercept":new_lr_model.intercept_})
-            scores_df: pd.DataFrame        = pd.DataFrame({"R2_Training":[r2_new], "R2_Test":[r2_test], "Q2_Score":[q2_score]})
-            outlier_df: pd.DataFrame       = pd.DataFrame({"Outlier": [outliers]})
-            result_df: pd.DataFrame        = pd.concat([coef_name_df, coef_value_df, intercept_df, scores_df, outlier_df], axis=1)
-            models: pd.DataFrame           = pd.concat([models, result_df])
+            coef_value: list[float]        = new_lr_model.coef_[0]
+            intercept: list[float]         = new_lr_model.intercept_
+            scores_list: list[float]       = [r2_new, r2_test, q2_score]
+            models.append([scores_list, des_names, coef_value, intercept, outliers])
             if r2_new < old_r2*1.1:
                 break
-    return models
+    models_df = pd.DataFrame(models)
+    return models_df
 
 
 def main() -> None:
@@ -164,7 +159,7 @@ def main() -> None:
             pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model)(x_train[des], y_train, x_test[des], y_test, [des], num_vars=numvar+1) for des in x_train.columns)
             models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
             results: pd.DataFrame       = pd.concat([header, models], ignore_index=True)
-            if not all_vars['build_wo_outlier']:
+            if all_vars['build_wo_outlier']:
                 pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[des], y_train, x_test[des], y_test, [des], num_vars=numvar+1) for des in x_train.columns)
                 models: list[pd.DataFrame]  = pd.concat(pd_list, ignore_index=True)
                 results: pd.DataFrame       = pd.concat([results, models], ignore_index=True)
@@ -172,7 +167,7 @@ def main() -> None:
             pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model)(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=numvar+1) for des in combinations(x_train.columns, numvar+1) if check_self_corelation(des, self_corelation, all_vars['pair_filter']))
             models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
             results: pd.DataFrame       = pd.concat([results, models], ignore_index=True)
-            if not all_vars['build_wo_outlier']:
+            if all_vars['build_wo_outlier']:
                 pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=numvar+1) for des in combinations(x_train.columns, numvar+1) if check_self_corelation(des, self_corelation, all_vars['pair_filter']))
                 models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
                 results: pd.DataFrame       = pd.concat([results, models], ignore_index=True)
