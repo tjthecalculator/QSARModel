@@ -24,7 +24,6 @@ def setup_argparser() -> ArgumentParser:
     parser.add_argument("--r2_filter", type=float, default=0.3, help="R^2 score for filtering out of uncorrelated descriptors (Default = 0.3)")
     parser.add_argument("--pair_filter", type=float, default=0.7, help="R^2 score for filtering out of correlated descriptors (Default = 0.7)")
     parser.add_argument("--build_wo_outlier", type=bool, default=False, help="Building QSAR without outlier data. (Default = False)")
-    parser.add_argument("--build_wo_outlier", type=bool, default=False, help="Building QSAR without outlier data. (Default = False)")
     parser.add_help = True
     return parser
 
@@ -65,7 +64,6 @@ def create_header(max_var: int) -> pd.DataFrame:
     coef_value_df: pd.DataFrame = pd.DataFrame({f"Coefficient_{i+1}":[] for i in range(max_var)})
     intercept_df: pd.DataFrame  = pd.DataFrame({"Intercept":[]})
     scores_df: pd.DataFrame     = pd.DataFrame({"R2_Train":[], "R2_Test":[], "Q2_Score":[]})
-    scores_df: pd.DataFrame     = pd.DataFrame({"R2_Training":[], "R2_Test":[], "Q2_Score":[]})
     outlier_df: pd.DataFrame    = pd.DataFrame({"Outlier":[]})
     result_df: pd.DataFrame     = pd.concat([scores_df, coef_name_df, coef_value_df, intercept_df, outlier_df], axis=1)
     return result_df
@@ -90,9 +88,6 @@ def build_model(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test: pd.DataFra
     scores_df: pd.DataFrame         = pd.DataFrame({"R2_Train":[r2_train], "R2_Test":[r2_test], "Q2_Score":[q2_scores]})
     outlier_df: pd.DataFrame        = pd.DataFrame({"Outlier":[[]]})
     result_df: pd.DataFrame         = pd.concat([scores_df, coef_name_df, coef_value_df, intercept_df, outlier_df], axis=1)
-    scores_df: pd.DataFrame         = pd.DataFrame({"R2_Training":[r2_train], "R2_Test":[r2_test], "Q2_Score":[q2_scores]})
-    outlier_df: pd.DataFrame        = pd.DataFrame({"Outlier":[]})
-    result_df: pd.DataFrame         = pd.concat([coef_name_df, coef_value_df, intercept_df, scores_df, outlier_df], axis=1)
     return result_df
 
 def build_model_wo_outlier(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test: pd.DataFrame, y_test: pd.DataFrame, des_names: list[str], num_vars: int = 1) -> pd.DataFrame:
@@ -123,11 +118,7 @@ def build_model_wo_outlier(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test:
             scores_df: pd.DataFrame        = pd.DataFrame({"R2_Train":[r2_new], "R2_Test":[r2_test], "Q2_Score":[q2_score]})
             outlier_df: pd.DataFrame       = pd.DataFrame({"Outlier":[outliers]})
             result_df: pd.DataFrame        = pd.concat([scores_df, coef_name_df, coef_value_df, intercept_df, outlier_df], axis=1)
-            models: pd.DataFrame           = pd.concat([models, result_df])
-            coef_value: list[float]        = new_lr_model.coef_[0]
-            intercept: list[float]         = new_lr_model.intercept_
-            scores_list: list[float]       = [r2_new, r2_test, q2_score]
-            models.append([scores_list, des_names, coef_value, intercept, outliers])
+            models: pd.DataFrame           = pd.concat([models, result_df], ignore_index=True)
             if r2_new < old_r2*1.1:
                 break
         else:
@@ -151,11 +142,7 @@ def build_model_wo_outlier(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test:
             scores_df: pd.DataFrame        = pd.DataFrame({"R2_Train":[r2_new], "R2_Test":[r2_test], "Q2_Score":[q2_score]})
             outlier_df: pd.DataFrame       = pd.DataFrame({"Outlier": [outliers]})
             result_df: pd.DataFrame        = pd.concat([scores_df, coef_name_df, coef_value_df, intercept_df, outlier_df], axis=1)
-            models: pd.DataFrame           = pd.concat([models, result_df])
-            coef_value: list[float]        = new_lr_model.coef_[0]
-            intercept: list[float]         = new_lr_model.intercept_
-            scores_list: list[float]       = [r2_new, r2_test, q2_score]
-            models.append([scores_list, des_names, coef_value, intercept, outliers])
+            models: pd.DataFrame           = pd.concat([models, result_df], ignore_index=True)
             if r2_new < old_r2*1.1:
                 break
     models['Outlier'] = [[outliers[x] for x in range(i)] for i in range(1, len(outliers)+1)]
@@ -169,7 +156,6 @@ def main() -> None:
     df.index         = [f'mol_{i+1}' for i in range(len(df))]
     x: pd.DataFrame  = calculate_descriptor([Chem.MolFromSmiles(smiles) for smiles in df[df.columns[0]]], use3D=all_vars['3D'])
     y: pd.DataFrame  = df[df.columns[-1]]
-    new_x, new_y     = clean_onevar(x, y, all_vars['r2_filter'])
     new_x, new_y     = clean_onevar(x, y, all_vars['r2_filter'])
     self_corelation  = {com:LinearRegression().fit(new_x[com[0]].values.reshape(-1, 1), new_x[com[1]].values.reshape(-1, 1)).score(new_x[com[0]].values.reshape(-1, 1), new_x[com[1]].values.reshape(-1, 1)) for com in combinations(new_x.columns, 2)}
     x_train, y_train, x_test, y_test = train_test_split(new_x, new_y, all_vars['interval'])
