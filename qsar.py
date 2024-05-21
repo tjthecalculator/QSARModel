@@ -86,7 +86,7 @@ def build_model(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test: pd.DataFra
     coef_value_df: pd.DataFrame     = pd.DataFrame({f"Coefficient_{i+1}":[val] for i, val in enumerate(lr_model.coef_[0])})
     intercept_df: pd.DataFrame      = pd.DataFrame({"Intercept":lr_model.intercept_})
     scores_df: pd.DataFrame         = pd.DataFrame({"R2_Train":[r2_train], "R2_Test":[r2_test], "Q2_Score":[q2_scores]})
-    outlier_df: pd.DataFrame        = pd.DataFrame({"Outlier":[[]]})
+    outlier_df: pd.DataFrame        = pd.DataFrame({"Outlier":[]})
     result_df: pd.DataFrame         = pd.concat([scores_df, coef_name_df, coef_value_df, intercept_df, outlier_df], axis=1)
     return result_df
 
@@ -95,7 +95,7 @@ def build_model_wo_outlier(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test:
     outliers: list[str]       = []
     new_x: pd.DataFrame       = deepcopy(x_train)
     new_y: pd.DataFrame       = deepcopy(y_train)
-    models                    = []
+    models                    = create_header(num_vars)
     while True:
         if num_vars == 1:
             lr_model: LinearRegression     = LinearRegression()
@@ -178,7 +178,7 @@ def main() -> None:
                 models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
                 results: pd.DataFrame       = pd.concat([results, models], ignore_index=True)
     
-    results.sort_values(by=['R2_Training'], ascending=False)
+    results = results.sort_values(by=['R2_Train'], ascending=False)
     if len(results) >= all_vars["maxmodel"]:
         results: pd.DataFrame = results.iloc[range(all_vars['maxmodel'])]
     results.to_csv(all_vars['output'])
