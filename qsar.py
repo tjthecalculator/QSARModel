@@ -160,20 +160,20 @@ def main() -> None:
     self_corelation  = {com:LinearRegression().fit(new_x[com[0]].values.reshape(-1, 1), new_x[com[1]].values.reshape(-1, 1)).score(new_x[com[0]].values.reshape(-1, 1), new_x[com[1]].values.reshape(-1, 1)) for com in combinations(new_x.columns, 2)}
     x_train, y_train, x_test, y_test = train_test_split(new_x, new_y, all_vars['interval'])
     header: pd.DataFrame = create_header(all_vars['maxvar'])
-    if all_vars['maxvar'] == 1:
-        pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model)(x_train[des], y_train, x_test[des], y_test, [des], num_vars=numvar+1) for des in x_train.columns)
+    if all_vars['numvar'] == 1:
+        pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model)(x_train[des], y_train, x_test[des], y_test, [des], num_vars=all_vars['numvar']) for des in x_train.columns)
         models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
         results: pd.DataFrame       = pd.concat([header, models], ignore_index=True)
         if all_vars['build_wo_outlier']:
-            pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[des], y_train, x_test[des], y_test, [des], num_vars=numvar+1) for des in x_train.columns)
+            pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[des], y_train, x_test[des], y_test, [des], num_vars=all_vars['numvar']) for des in x_train.columns)
             models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
             results: pd.DataFrame       = pd.concat([results, models], ignore_index=True)
     else:
-        pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model)(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=numvar+1) for des in combinations(x_train.columns, numvar+1) if check_self_corelation(des, self_corelation, all_vars['pair_filter']))
+        pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model)(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=all_vars['numvar']) for des in combinations(x_train.columns, all_vars['numvar']) if check_self_corelation(des, self_corelation, all_vars['pair_filter']))
         models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
         results: pd.DataFrame       = pd.concat([header, models], ignore_index=True)
         if all_vars['build_wo_outlier']:
-            pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=numvar+1) for des in combinations(x_train.columns, numvar+1) if check_self_corelation(des, self_corelation, all_vars['pair_filter']))
+            pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=all_vars['numvar']) for des in combinations(x_train.columns, all_vars['numvar']) if check_self_corelation(des, self_corelation, all_vars['pair_filter']))
             models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
             results: pd.DataFrame       = pd.concat([results, models], ignore_index=True)
     
