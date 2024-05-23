@@ -16,7 +16,7 @@ from sklearn.model_selection import LeaveOneOut, cross_val_score
 def setup_argparser() -> ArgumentParser:
     parser = ArgumentParser(description="QSAR Application")
     parser.add_argument("--filename", "-f", type=str, help="Name of the file to process, this file must be .csv and it contains two columns molecules as SMILES format and activity value.")
-    parser.add_argument("--output", "-o", type=str, default=None, help="Name of the output file")
+    parser.add_argument("--output", "-o", type=str, default="Output_1_var.csv", help="Name of the output file")
     parser.add_argument("--3D", type=bool, default=False, help="Using 3D molecular descriptor. (default = False)")
     parser.add_argument("--numvar", type=int, default=1, help="Number of variable in QSAR model. (Default = 1)")
     parser.add_argument("--maxmodel", type=int, default=1000, help="Number of maximum model to report. (Default = 1000)")
