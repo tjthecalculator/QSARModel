@@ -18,7 +18,7 @@ def setup_argparser() -> ArgumentParser:
     parser.add_argument("--filename", "-f", type=str, help="Name of the file to process, this file must be .csv and it contains two columns molecules as SMILES format and activity value.")
     parser.add_argument("--output", "-o", type=str, default=None, help="Name of the output file")
     parser.add_argument("--3D", type=bool, default=False, help="Using 3D molecular descriptor. (default = False)")
-    parser.add_argument("--maxvar", type=int, default=4, help="Number of maximum variable in QSAR model. (Default = 4)")
+    parser.add_argument("--numvar", type=int, default=1, help="Number of variable in QSAR model. (Default = 1)")
     parser.add_argument("--maxmodel", type=int, default=1000, help="Number of maximum model to report. (Default = 1000)")
     parser.add_argument("--interval", type=int, default=3, help="Interval of data for train-test splitting data (Default = 3)")
     parser.add_argument("--r2_filter", type=float, default=0.3, help="R^2 score for filtering out of uncorrelated descriptors (Default = 0.3)")
@@ -160,23 +160,22 @@ def main() -> None:
     self_corelation  = {com:LinearRegression().fit(new_x[com[0]].values.reshape(-1, 1), new_x[com[1]].values.reshape(-1, 1)).score(new_x[com[0]].values.reshape(-1, 1), new_x[com[1]].values.reshape(-1, 1)) for com in combinations(new_x.columns, 2)}
     x_train, y_train, x_test, y_test = train_test_split(new_x, new_y, all_vars['interval'])
     header: pd.DataFrame = create_header(all_vars['maxvar'])
-    for numvar in range(all_vars['maxvar']):
-        if numvar+1 == 1:
-            pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model)(x_train[des], y_train, x_test[des], y_test, [des], num_vars=numvar+1) for des in x_train.columns)
-            models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
-            results: pd.DataFrame       = pd.concat([header, models], ignore_index=True)
-            if all_vars['build_wo_outlier']:
-                pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[des], y_train, x_test[des], y_test, [des], num_vars=numvar+1) for des in x_train.columns)
-                models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
-                results: pd.DataFrame       = pd.concat([results, models], ignore_index=True)
-        else:
-            pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model)(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=numvar+1) for des in combinations(x_train.columns, numvar+1) if check_self_corelation(des, self_corelation, all_vars['pair_filter']))
+    if all_vars['maxvar'] == 1:
+        pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model)(x_train[des], y_train, x_test[des], y_test, [des], num_vars=numvar+1) for des in x_train.columns)
+        models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
+        results: pd.DataFrame       = pd.concat([header, models], ignore_index=True)
+        if all_vars['build_wo_outlier']:
+            pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[des], y_train, x_test[des], y_test, [des], num_vars=numvar+1) for des in x_train.columns)
             models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
             results: pd.DataFrame       = pd.concat([results, models], ignore_index=True)
-            if all_vars['build_wo_outlier']:
-                pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=numvar+1) for des in combinations(x_train.columns, numvar+1) if check_self_corelation(des, self_corelation, all_vars['pair_filter']))
-                models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
-                results: pd.DataFrame       = pd.concat([results, models], ignore_index=True)
+    else:
+        pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model)(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=numvar+1) for des in combinations(x_train.columns, numvar+1) if check_self_corelation(des, self_corelation, all_vars['pair_filter']))
+        models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
+        results: pd.DataFrame       = pd.concat([header, models], ignore_index=True)
+        if all_vars['build_wo_outlier']:
+            pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=numvar+1) for des in combinations(x_train.columns, numvar+1) if check_self_corelation(des, self_corelation, all_vars['pair_filter']))
+            models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
+            results: pd.DataFrame       = pd.concat([results, models], ignore_index=True)
     
     results = results.sort_values(by=['R2_Train'], ascending=False)
     if len(results) >= all_vars["maxmodel"]:
