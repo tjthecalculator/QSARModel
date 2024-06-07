@@ -4,7 +4,7 @@ from itertools import combinations
 
 import numpy as np
 import pandas as pd
-from joblib import Parallel, delayed
+#from joblib import Parallel, delayed
 from mordred import Calculator, descriptors
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -161,26 +161,37 @@ def main() -> None:
     x_train, y_train, x_test, y_test = train_test_split(new_x, new_y, all_vars['interval'])
     header: pd.DataFrame = create_header(all_vars['maxvar'])
     if all_vars['numvar'] == 1:
-        pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model)(x_train[des], y_train, x_test[des], y_test, [des], num_vars=all_vars['numvar']) for des in x_train.columns)
-        models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
-        results: pd.DataFrame       = pd.concat([header, models], ignore_index=True)
+        for des in x_train.columns:
+            model: pd.DataFrame  = build_model(x_train[des], y_train, x_test[des], y_test, [des], num_vars=all_vars['numvar'])
+            models: pd.DataFrame = pd.concat([header, model], ignore_index=True)
+            if len(models) > all_vars['maxmodel']:
+                models.sort_values(by=['R2_Train'], ascending=False)
+                models = models.iloc[range(all_vars['maxmodel'])]
         if all_vars['build_wo_outlier']:
-            pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[des], y_train, x_test[des], y_test, [des], num_vars=all_vars['numvar']) for des in x_train.columns)
-            models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
-            results: pd.DataFrame       = pd.concat([results, models], ignore_index=True)
+            for des in x_train.columns:
+                model: pd.DataFrame  = build_model_wo_outlier(x_train[des], y_train, x_test[des], y_test, [des], num_vars=all_vars['numvar'])
+                models: pd.DataFrame = pd.concat([models, model], ignore_index=True)
+                if len(models) > all_vars['maxmodel']:
+                    models.sort_values(by=['R2_Train'], ascending=False)
+                    models = models.iloc[range(all_vars['maxmodel'])]
     else:
-        pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model)(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=all_vars['numvar']) for des in combinations(x_train.columns, all_vars['numvar']) if check_self_corelation(des, self_corelation, all_vars['pair_filter']))
-        models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
-        results: pd.DataFrame       = pd.concat([header, models], ignore_index=True)
+        for des in combinations(x_train.columns, all_vars['numvar']):
+            if check_self_corelation(des, self_corelation, all_vars['pair_filter']):
+                model: pd.DataFrame  = build_model(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=all_vars['numvar'])
+                models: pd.DataFrame = pd.concat([header, model], ignore_index=True)
+                if len(models) > all_vars['maxmodel']:
+                    models.sort_values(by=['R2_Train'], ascending=False)
+                    models: pd.DataFrame = models.iloc[range(all_vars['maxmodel'])]
         if all_vars['build_wo_outlier']:
-            pd_list: list[pd.DataFrame] = Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=all_vars['numvar']) for des in combinations(x_train.columns, all_vars['numvar']) if check_self_corelation(des, self_corelation, all_vars['pair_filter']))
-            models: pd.DataFrame        = pd.concat(pd_list, ignore_index=True)
-            results: pd.DataFrame       = pd.concat([results, models], ignore_index=True)
+            for des in combinations(x_train.columns, all_vars['numvar']):
+                if check_self_corelation(des, self_corelation, all_vars['pair_filter']):
+                    model: pd.DataFrame  = build_model_wo_outlier(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=all_vars['numvar'])
+                    models: pd.DataFrame = pd.concat([models, model], ignore_index=True)
+                    if len(models) > all_vars['maxmodel']:
+                        models.sort_values(by=['R2_Train'], ascending=False)
+                        models: pd.DataFrame = models.iloc[range(all_vars['maxmodel'])]
     
-    results = results.sort_values(by=['R2_Train'], ascending=False)
-    if len(results) >= all_vars["maxmodel"]:
-        results: pd.DataFrame = results.iloc[range(all_vars['maxmodel'])]
-    results.to_csv(all_vars['output'])
+    models.to_csv(all_vars['output'])
 
 if __name__ == "__main__":
     main()
