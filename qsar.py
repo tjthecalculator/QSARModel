@@ -164,6 +164,7 @@ def main() -> None:
         for des in x_train.columns:
             model: pd.DataFrame  = build_model(x_train[des], y_train, x_test[des], y_test, [des], num_vars=all_vars['numvar'])
             models: pd.DataFrame = pd.concat([header, model], ignore_index=True)
+            header: pd.DataFrame = models
             if len(models) > all_vars['maxmodel']:
                 models.sort_values(by=['R2_Train'], ascending=False)
                 models = models.iloc[range(all_vars['maxmodel'])]
@@ -179,6 +180,7 @@ def main() -> None:
             if check_self_corelation(des, self_corelation, all_vars['pair_filter']):
                 model: pd.DataFrame  = build_model(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=all_vars['numvar'])
                 models: pd.DataFrame = pd.concat([header, model], ignore_index=True)
+                header: pd.DataFrame = models
                 if len(models) > all_vars['maxmodel']:
                     models.sort_values(by=['R2_Train'], ascending=False)
                     models: pd.DataFrame = models.iloc[range(all_vars['maxmodel'])]
