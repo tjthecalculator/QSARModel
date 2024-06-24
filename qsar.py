@@ -1,10 +1,12 @@
+import glob
+import os
 from argparse import ArgumentParser
 from copy import deepcopy
 from itertools import combinations
 
 import numpy as np
 import pandas as pd
-#from joblib import Parallel, delayed
+from joblib import Parallel, delayed
 from mordred import Calculator, descriptors
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -24,6 +26,7 @@ def setup_argparser() -> ArgumentParser:
     parser.add_argument("--r2_filter", type=float, default=0.3, help="R^2 score for filtering out of uncorrelated descriptors (Default = 0.3)")
     parser.add_argument("--pair_filter", type=float, default=0.7, help="R^2 score for filtering out of correlated descriptors (Default = 0.7)")
     parser.add_argument("--build_wo_outlier", type=bool, default=False, help="Building QSAR without outlier data. (Default = False)")
+    parser.add_argument("--scratchfile", type=str, default="scratch/{index:015d}_{type}.csv", help="Directory of scratch file to store all combination and it will delete later")
     parser.add_help = True
     return parser
 
@@ -69,7 +72,7 @@ def create_header(max_var: int) -> pd.DataFrame:
     return result_df
 
 
-def build_model(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test: pd.DataFrame, y_test: pd.DataFrame, des_names: list[str], num_vars: int = 1) -> pd.DataFrame:
+def build_model(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test: pd.DataFrame, y_test: pd.DataFrame, des_names: list[str], num_vars: int = 1, scratch: str=None) -> None:
     if num_vars == 1:
         lr_model: LinearRegression  = LinearRegression()
         q2_scores: float            = 1 - np.abs(cross_val_score(lr_model, x_train.values.reshape(-1, 1), y_train.values.reshape(-1, 1), cv=LeaveOneOut(), scoring='neg_mean_squared_error')).sum()/((y_train.values - y_train.values.mean())**2).sum()
@@ -88,9 +91,9 @@ def build_model(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test: pd.DataFra
     scores_df: pd.DataFrame         = pd.DataFrame({"R2_Train":[r2_train], "R2_Test":[r2_test], "Q2_Score":[q2_scores]})
     outlier_df: pd.DataFrame        = pd.DataFrame({"Outlier":[]})
     result_df: pd.DataFrame         = pd.concat([scores_df, coef_name_df, coef_value_df, intercept_df, outlier_df], axis=1)
-    return result_df
+    result_df.to_csv(scratch)
 
-def build_model_wo_outlier(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test: pd.DataFrame, y_test: pd.DataFrame, des_names: list[str], num_vars: int = 1) -> pd.DataFrame:
+def build_model_wo_outlier(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test: pd.DataFrame, y_test: pd.DataFrame, des_names: list[str], num_vars: int = 1, scratch:str = None) -> None:
     original_index: list[str] = [mol_index for mol_index in x_train.index]
     outliers: list[str]       = []
     new_x: pd.DataFrame       = deepcopy(x_train)
@@ -146,8 +149,21 @@ def build_model_wo_outlier(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test:
             if r2_new < old_r2*1.1:
                 break
     models['Outlier'] = [[outliers[x] for x in range(i)] for i in range(1, len(outliers)+1)]
-    return models
+    models.to_csv(scratch)
 
+def combine_all_file(scratch_dir: str, maxmodel: int) -> pd.DataFrame:
+    path: str                   = os.path.split(scratch_dir)[0]
+    list_df: list[pd.DataFrame] = []
+    for filename in glob.glob(path + '\*'):
+        df: pd.DataFrame = pd.read_csv(filename)
+        list_df.append(df)
+        if len(list_df) > maxmodel:
+            models = pd.concat(list_df, ignore_index=True)
+            models.sort_values("R2_Train", inplace=True, ascending=False)
+            if models['R2_Train'].iloc[-1] > df['R2_Train']:
+                models.iloc[-1] = df
+                list_df: list[pd.DataFrame] = []
+    return models                
 
 def main() -> None:
     args             = setup_argparser().parse_args()
@@ -159,41 +175,17 @@ def main() -> None:
     new_x, new_y     = clean_onevar(x, y, all_vars['r2_filter'])
     self_corelation  = {com:LinearRegression().fit(new_x[com[0]].values.reshape(-1, 1), new_x[com[1]].values.reshape(-1, 1)).score(new_x[com[0]].values.reshape(-1, 1), new_x[com[1]].values.reshape(-1, 1)) for com in combinations(new_x.columns, 2)}
     x_train, y_train, x_test, y_test = train_test_split(new_x, new_y, all_vars['interval'])
-    header: pd.DataFrame = create_header(all_vars['maxvar'])
     if all_vars['numvar'] == 1:
-        for des in x_train.columns:
-            model: pd.DataFrame  = build_model(x_train[des], y_train, x_test[des], y_test, [des], num_vars=all_vars['numvar'])
-            models: pd.DataFrame = pd.concat([header, model], ignore_index=True)
-            header: pd.DataFrame = models
-            if len(models) > all_vars['maxmodel']:
-                models.sort_values(by=['R2_Train'], ascending=False)
-                models = models.iloc[range(all_vars['maxmodel'])]
+        Parallel(n_jobs=-1)(delayed(build_model)(x_train[des], y_train, x_test[des], y_test, [des], all_vars['numvar'], all_vars['scratch'].format(index=i, type='normal')) for i, des in enumerate(x_train.columns, start=1))
         if all_vars['build_wo_outlier']:
-            for des in x_train.columns:
-                model: pd.DataFrame  = build_model_wo_outlier(x_train[des], y_train, x_test[des], y_test, [des], num_vars=all_vars['numvar'])
-                models: pd.DataFrame = pd.concat([models, model], ignore_index=True)
-                if len(models) > all_vars['maxmodel']:
-                    models.sort_values(by=['R2_Train'], ascending=False)
-                    models = models.iloc[range(all_vars['maxmodel'])]
+            Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[des], y_train, x_test[des], y_test, [des], all_vars['numvar'], all_vars['scratch'].format(index=i, type='wo_outlier')) for i, des in enumerate(x_train.columns, start=1))
     else:
-        for des in combinations(x_train.columns, all_vars['numvar']):
-            if check_self_corelation(des, self_corelation, all_vars['pair_filter']):
-                model: pd.DataFrame  = build_model(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=all_vars['numvar'])
-                models: pd.DataFrame = pd.concat([header, model], ignore_index=True)
-                header: pd.DataFrame = models
-                if len(models) > all_vars['maxmodel']:
-                    models.sort_values(by=['R2_Train'], ascending=False)
-                    models: pd.DataFrame = models.iloc[range(all_vars['maxmodel'])]
+        Parallel(n_jobs=-1)(delayed(build_model)(x_train[des], y_train, x_test[des], y_test, [des], all_vars['numvar'], all_vars['scratch'].format(index=i, type='normal')) for i, des in enumerate(combinations(x_train.columns, all_vars['numvar']), start=1) if check_self_corelation(des, self_corelation, all_vars['pair_filter']))
         if all_vars['build_wo_outlier']:
-            for des in combinations(x_train.columns, all_vars['numvar']):
-                if check_self_corelation(des, self_corelation, all_vars['pair_filter']):
-                    model: pd.DataFrame  = build_model_wo_outlier(x_train[list(des)], y_train, x_test[list(des)], y_test, des, num_vars=all_vars['numvar'])
-                    models: pd.DataFrame = pd.concat([models, model], ignore_index=True)
-                    if len(models) > all_vars['maxmodel']:
-                        models.sort_values(by=['R2_Train'], ascending=False)
-                        models: pd.DataFrame = models.iloc[range(all_vars['maxmodel'])]
-    
-    models.to_csv(all_vars['output'])
+            Parallel(n_jobs=-1)(delayed(build_model_wo_outlier)(x_train[des], y_train, x_test[des], y_test, [des], all_vars['numvar'], all_vars['scratch'].format(index=i, type='wo_outlier')) for i, des in enumerate(combinations(x_train.columns, all_vars['numvar']), start=1) if check_self_corelation(des, self_corelation, all_vars['pair_filter']))
+
+    models = combine_all_file(all_vars['scratch'], all_vars['maxmodel'])
+    models.to_csv(all_vars['output'])    
 
 if __name__ == "__main__":
     main()
