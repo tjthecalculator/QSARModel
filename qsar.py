@@ -91,7 +91,8 @@ def build_model(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test: pd.DataFra
     scores_df: pd.DataFrame         = pd.DataFrame({"R2_Train":[r2_train], "R2_Test":[r2_test], "Q2_Score":[q2_scores]})
     outlier_df: pd.DataFrame        = pd.DataFrame({"Outlier":[]})
     result_df: pd.DataFrame         = pd.concat([scores_df, coef_name_df, coef_value_df, intercept_df, outlier_df], axis=1)
-    result_df.to_csv(scratch)
+    if r2_train > 0.5:
+        result_df.to_csv(scratch)
 
 def build_model_wo_outlier(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test: pd.DataFrame, y_test: pd.DataFrame, des_names: list[str], num_vars: int = 1, scratch:str = None) -> None:
     original_index: list[str] = [mol_index for mol_index in x_train.index]
@@ -149,7 +150,8 @@ def build_model_wo_outlier(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test:
             if r2_new < old_r2*1.1:
                 break
     models['Outlier'] = [[outliers[x] for x in range(i)] for i in range(1, len(outliers)+1)]
-    models.to_csv(scratch)
+    if r2_new > 0.5:
+        models.to_csv(scratch)
 
 def combine_all_file(scratch_dir: str, maxmodel: int) -> pd.DataFrame:
     path: str                   = os.path.split(scratch_dir)[0]
